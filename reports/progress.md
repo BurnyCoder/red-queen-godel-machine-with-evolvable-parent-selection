@@ -1,3 +1,9 @@
 # Study progress
 
-20 November 2026 · Corpus preparation and source checks completed. The split manifest is registered before local inference. The implementation and engineering tests are the next milestone. The first pilot block targets 14 hours; the one-week projection will use measured throughput. [Run matrix](planned-runs.md)
+0 completed searches and 0 completed endpoint evaluations. The sealed editable–native comparison is pending.
+
+No search trajectory has been recorded.
+
+The first pilot block has a 14-hour target. The remaining-week estimate becomes available after all four pilot timings.
+
+[Run matrix](planned-runs.md) · [Live dashboard](../docs/index.html)
