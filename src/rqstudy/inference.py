@@ -115,6 +115,19 @@ class Broker:
             start = time.monotonic()
             parts, terminal = [], None
             try:
+                # Count the complete two messages before requesting inference. Leave space
+                # for the chat template, decoder and a fixed margin on every backend.
+                from .reading import tokenizer
+
+                codec = tokenizer(self.project)
+                submitted = sum(
+                    len(codec.encode(m["content"], add_special_tokens=False).ids)
+                    for m in payload["messages"]
+                )
+                if submitted + cap + 128 > self.ctx:
+                    raise ValueError(
+                        "Complete input and reserved output exceed the frozen context"
+                    )
                 with self.client.stream("POST", "/api/chat", json=payload) as stream:
                     stream.raise_for_status()
                     for line in stream.iter_lines():

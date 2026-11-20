@@ -106,3 +106,53 @@ def test_sandbox_blocks_private_io():
         Worker().call(
             "def instruct(context):\n    return open('.env').read()", "instruct", {}
         )
+
+
+def test_concatenated_mastheads_and_blind_review_titles():
+    assert (
+        clean("formula2Under review as a conference paper at ICLR 2025 appendix")
+        == "formula2 appendix"
+    )
+    assert (
+        clean("analyticalPublished as a conference paper at ICLR 2024 noise")
+        == "analytical noise"
+    )
+    assert (
+        clean(
+            "Study Anonymous authors Paper under double-blind review\n\nAbstract: proof"
+        )
+        == "Study \n\nAbstract: proof"
+    )
+    assert "openreview.net" not in clean(
+        "Citation https: //openreview.net/forum?id=public-id"
+    )
+
+
+def test_failed_worker_uniform_root_and_readonly_snapshot():
+    class FailedWorker:
+        def call(self, *args):
+            raise ValueError("Worker timed out")
+
+    a = tree()
+    before = archive_view(a, 1, 40, 64)
+    selected = choose_parent(
+        "editable",
+        a,
+        before,
+        np.random.default_rng(42),
+        FailedWorker(),
+        fallback_allowance=1,
+    )
+    assert (
+        selected["trusted_root_fallback"]
+        and selected["owner"] == "root"
+        and len(selected["failures"]) == 2
+    )
+    assert selected["parent"] in a.nodes
+    assert "secret" not in before
+    Worker().call(
+        "def instruct(context):\n    context['secret'] = 1\n    return 'ok'",
+        "instruct",
+        before,
+    )
+    assert "secret" not in before
