@@ -12,7 +12,6 @@ import hashlib
 import io
 import json
 import re
-import sys
 import unicodedata
 import urllib.request
 from collections import Counter
@@ -24,13 +23,21 @@ DATA_HASH = "efa8e77721d6d41c5d9ea69aaab8f0c16664618876e2c9dfe897a3852bb242c9"
 # Mastheads recur inside converted PDFs. Match just the status phrase, including
 # its venue, year and nearby spacing, to preserve adjacent scientific text.
 STATUS = re.compile(
-    r"\b(?:published\s+as|under\s+review\s+as|accepted\s+as)\s+(?:an?\s+)?(?:conference|workshop|spotlight|oral|poster)\s+paper(?:\s+(?:at|for|in|to)\s+(?:ICLR|NeurIPS|ICML|[A-Z]{2,12})(?:\s+20\d{2})?)?",
+    r"(?:published\s+as|under\s+review\s+as|accepted\s+as)\s+(?:an?\s+)?(?:conference|workshop|spotlight|oral|poster)\s+paper(?:\s+(?:at|for|in|to)\s+(?:ICLR|NeurIPS|ICML|[A-Z]{2,12})(?:\s+20\d{2})?)?",
     re.I,
 )
 METALINE = re.compile(
     r"(?im)^[ \t]*(?:final decision|acceptance decision|decision|meta[- ]review|openreview (?:id|forum)|venue status)\s*:[^\n]*$"
 )
-LINK = re.compile(r"https?://(?:www\.)?openreview\.net/(?:forum|pdf)\?id=[\w-]+", re.I)
+BLIND_HEADER = re.compile(
+    r"(?:anonymous\s+authors?\s*)?paper\s+under\s+double[\s-]+blind\s+review", re.I
+)
+LINK = re.compile(
+    r"https?\s*:\s*//\s*(?:www\.)?openreview\.net/(?:forum|pdf)\?id=[\w-]+", re.I
+)
+MANUSCRIPT = re.compile(
+    r"\ATitle:\s*(.+?)\s*\n+\s*Abstract:\s*(.+?)(?=\n+\s*Section:|\Z)", re.S | re.I
+)
 SIZES = {"train": 100, "validation": 100, "test": 100, "pilot": 24}
 
 
@@ -76,11 +83,7 @@ def read_split(project: Path, split: str):
     if digest(canonical(identity)) != manifest["sha256"]:
         raise ValueError(f"{split} split fingerprint mismatch")
     for paper in papers:
-        parsed = re.search(
-            r"\ATitle:\s*(.+?)\s*\n+\s*Abstract:\s*(.+?)(?=\n+\s*Section:|\Z)",
-            paper["text"],
-            re.S | re.I,
-        )
+        parsed = MANUSCRIPT.search(paper["text"])
         if not parsed or tuple(s.strip() for s in parsed.groups()) != (
             paper["title"],
             paper["abstract"],
@@ -97,7 +100,9 @@ def clean(raw: str) -> str:
         except (ValueError, SyntaxError):
             raw = raw.strip("'\"").replace("\\n", "\n")
     raw = unicodedata.normalize("NFKC", raw).replace("\r\n", "\n")
-    return LINK.sub("", METALINE.sub("", STATUS.sub("", raw))).strip()
+    return LINK.sub(
+        "", METALINE.sub("", BLIND_HEADER.sub("", STATUS.sub("", raw)))
+    ).strip()
 
 
 def words(text: str) -> set[str]:
@@ -123,11 +128,7 @@ def unique_papers(rows):
 
     for row in rows:
         body = clean(row["paper_text"])
-        match = re.search(
-            r"\ATitle:\s*(.+?)\s*\n+\s*Abstract:\s*(.+?)(?=\n+\s*Section:|\Z)",
-            body,
-            re.S | re.I,
-        )
+        match = MANUSCRIPT.search(body)
         if not match or row["outcome"] not in {"accept", "reject"}:
             missing += 1
             continue

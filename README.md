@@ -57,6 +57,15 @@ The campaign preflights GPU residency, scores the root, and interleaves program 
 ## Milestones
 
 - [x] Pin publications, upstream implementation and source dataset; register paper-disjoint splits.
-- [ ] Ship the CLI, run its tests, publish the executable protocol.
+- [x] Ship the CLI and check the scheduler, inheritance, erasure, fallback and resume. [Engineering results](results/engineering.json) · [Prospective cleaning amendment](reports/amendments.md)
 - [ ] Run the local pilot and choose the confirmatory budget from throughput.
 - [ ] Freeze and score all confirmatory endpoints, publish comparisons and limitations.
+
+<!-- GENERATED: outcomes -->
+## Observed results
+
+The sealed editable–native comparison is pending.
+
+No endpoint predictions have been recorded.
+
+[Full report, compute and uncertainty](reports/summary.md) · [Examples and lineage explorer](https://burnycoder.github.io/red-queen-godel-machine-with-evolvable-parent-selection/) · [Paper PDF](reports/paper.pdf)
