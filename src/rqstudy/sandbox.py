@@ -4,6 +4,7 @@ Bubblewrap namespaces protect the host; a small Python interface also gives the
 selector stable seeded randomness, bounded output and documented operations.
 https://github.com/containers/bubblewrap
 """
+
 from __future__ import annotations
 
 import functools
@@ -41,20 +42,67 @@ class Worker:
     def call(self, source: str, function: str, context: dict, seed: int = 0) -> str:
         if len(source) > 16000:
             raise ValueError("Workspace source exceeds the worker limit")
-        prefix = ["wsl", "-d", os.getenv("RQGM_WSL_DISTRO", "Ubuntu"), "--exec"] if os.name == "nt" else []
+        prefix = (
+            ["wsl", "-d", os.getenv("RQGM_WSL_DISTRO", "Ubuntu"), "--exec"]
+            if os.name == "nt"
+            else []
+        )
         # Mount runtime binaries alone. The Windows workspace, home and dataset
         # are absent, as are host credentials and network interfaces.
-        command = prefix + ["bwrap","--unshare-all","--clearenv","--new-session","--die-with-parent",
-                            "--ro-bind","/usr","/usr","--symlink","usr/lib","/lib","--symlink","usr/lib64","/lib64",
-                            "--symlink","usr/bin","/bin","--tmpfs","/tmp","--dev","/dev","--proc","/proc","--chdir","/tmp",
-                            "--setenv","PYTHONIOENCODING","utf-8","/usr/bin/python3","-I","-S","-c",DRIVER]
-        payload = json.dumps(dict(source=source,function=function,context=context,seed=seed),ensure_ascii=True)
+        command = prefix + [
+            "bwrap",
+            "--unshare-all",
+            "--clearenv",
+            "--new-session",
+            "--die-with-parent",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--symlink",
+            "usr/lib",
+            "/lib",
+            "--symlink",
+            "usr/lib64",
+            "/lib64",
+            "--symlink",
+            "usr/bin",
+            "/bin",
+            "--tmpfs",
+            "/tmp",
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+            "--chdir",
+            "/tmp",
+            "--setenv",
+            "PYTHONIOENCODING",
+            "utf-8",
+            "/usr/bin/python3",
+            "-I",
+            "-S",
+            "-c",
+            DRIVER,
+        ]
+        payload = json.dumps(
+            dict(source=source, function=function, context=context, seed=seed),
+            ensure_ascii=True,
+        )
         try:
-            result = subprocess.run(command, input=payload.encode(), capture_output=True, timeout=12, check=False)
+            result = subprocess.run(
+                command,
+                input=payload.encode(),
+                capture_output=True,
+                timeout=12,
+                check=False,
+            )
         except subprocess.TimeoutExpired as exc:
             raise ValueError("Worker timed out") from exc
         if result.returncode:
-            raise ValueError(result.stderr.decode("utf-8","replace")[-500:] or f"Worker exited {result.returncode}")
+            raise ValueError(
+                result.stderr.decode("utf-8", "replace")[-500:]
+                or f"Worker exited {result.returncode}"
+            )
         try:
             return json.loads(result.stdout)
         except (ValueError, UnicodeError) as exc:
@@ -63,4 +111,4 @@ class Worker:
     @functools.lru_cache(maxsize=1024)
     def instruction(self, source: str, role: str, route: str = "") -> str:
         """Memoize only deterministic instruction calls with identical public context."""
-        return self.call(source, "instruct", {"role":role, "route":route})
+        return self.call(source, "instruct", {"role": role, "route": route})

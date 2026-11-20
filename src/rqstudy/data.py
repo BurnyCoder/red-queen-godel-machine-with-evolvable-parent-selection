@@ -3,6 +3,7 @@
 Global context: only the trusted host reads labeled files. The model receives a
 formatted paper, an abstract, or selected training feedback through the broker.
 """
+
 from __future__ import annotations
 
 import ast
@@ -22,33 +23,70 @@ DATA_URL = f"https://raw.githubusercontent.com/facebookresearch/HyperAgents/{REV
 DATA_HASH = "efa8e77721d6d41c5d9ea69aaab8f0c16664618876e2c9dfe897a3852bb242c9"
 # Mastheads recur inside converted PDFs. Match just the status phrase, including
 # its venue, year and nearby spacing, to preserve adjacent scientific text.
-STATUS = re.compile(r"\b(?:published\s+as|under\s+review\s+as|accepted\s+as)\s+(?:an?\s+)?(?:conference|workshop|spotlight|oral|poster)\s+paper(?:\s+(?:at|for|in|to)\s+(?:ICLR|NeurIPS|ICML|[A-Z]{2,12})(?:\s+20\d{2})?)?", re.I)
-METALINE = re.compile(r"(?im)^[ \t]*(?:final decision|acceptance decision|decision|meta[- ]review|openreview (?:id|forum)|venue status)\s*:[^\n]*$")
+STATUS = re.compile(
+    r"\b(?:published\s+as|under\s+review\s+as|accepted\s+as)\s+(?:an?\s+)?(?:conference|workshop|spotlight|oral|poster)\s+paper(?:\s+(?:at|for|in|to)\s+(?:ICLR|NeurIPS|ICML|[A-Z]{2,12})(?:\s+20\d{2})?)?",
+    re.I,
+)
+METALINE = re.compile(
+    r"(?im)^[ \t]*(?:final decision|acceptance decision|decision|meta[- ]review|openreview (?:id|forum)|venue status)\s*:[^\n]*$"
+)
 LINK = re.compile(r"https?://(?:www\.)?openreview\.net/(?:forum|pdf)\?id=[\w-]+", re.I)
 SIZES = {"train": 100, "validation": 100, "test": 100, "pilot": 24}
 
 
 def digest(value: str | bytes) -> str:
     """Return a content identity independent of platform newlines and Python hash seeds."""
-    return hashlib.sha256(value.encode("utf-8") if isinstance(value, str) else value).hexdigest()
+    return hashlib.sha256(
+        value.encode("utf-8") if isinstance(value, str) else value
+    ).hexdigest()
 
 
 def canonical(value: object) -> str:
     """Use one unambiguous representation for published hashes and cache keys."""
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
 
 
 def dump(path: Path, value: object) -> None:
     """Atomically publish readable JSON so observers see whole snapshots."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".part")
-    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    tmp.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
     tmp.replace(path)
 
 
 def load(path: Path):
     """Read a trusted JSON artifact."""
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def read_split(project: Path, split: str):
+    """Verify manuscript contents, extracted writer inputs, labels and registered order."""
+    papers = load(project / ".private" / "data" / (split + ".json"))
+    manifest = load(project / "results" / "split-manifest.json")["splits"][split]
+    identity = [(p["id"], digest(p["text"]), p["label"]) for p in papers]
+    if digest(canonical(identity)) != manifest["sha256"]:
+        raise ValueError(f"{split} split fingerprint mismatch")
+    for paper in papers:
+        parsed = re.search(
+            r"\ATitle:\s*(.+?)\s*\n+\s*Abstract:\s*(.+?)(?=\n+\s*Section:|\Z)",
+            paper["text"],
+            re.S | re.I,
+        )
+        if not parsed or tuple(s.strip() for s in parsed.groups()) != (
+            paper["title"],
+            paper["abstract"],
+        ):
+            raise ValueError("Writer inputs differ from the fingerprinted manuscript")
+    return papers
 
 
 def clean(raw: str) -> str:
@@ -85,7 +123,11 @@ def unique_papers(rows):
 
     for row in rows:
         body = clean(row["paper_text"])
-        match = re.search(r"\ATitle:\s*(.+?)\s*\n+\s*Abstract:\s*(.+?)(?=\n+\s*Section:|\Z)", body, re.S | re.I)
+        match = re.search(
+            r"\ATitle:\s*(.+?)\s*\n+\s*Abstract:\s*(.+?)(?=\n+\s*Section:|\Z)",
+            body,
+            re.S | re.I,
+        )
         if not match or row["outcome"] not in {"accept", "reject"}:
             missing += 1
             continue
@@ -93,7 +135,11 @@ def unique_papers(rows):
         index = len(items)
         groups.append(index)
         title_set, abstract_set = words(title), words(abstract)
-        for key in ("id:" + row["question_id"], "title:" + " ".join(re.findall(r"\w+", title.casefold())), "body:" + digest(body)):
+        for key in (
+            "id:" + row["question_id"],
+            "title:" + " ".join(re.findall(r"\w+", title.casefold())),
+            "body:" + digest(body),
+        ):
             if key in keys:
                 groups[root(index)] = root(keys[key])
             keys[key] = index
@@ -101,13 +147,31 @@ def unique_papers(rows):
             if similar(t, title_set, 0.75) and similar(a, abstract_set, 0.82):
                 groups[root(index)] = root(other)
         signatures.append((title_set, abstract_set))
-        items.append(dict(id=row["question_id"], title=title, abstract=abstract, text=body, label=row["outcome"], text_sha256=digest(body)))
+        items.append(
+            dict(
+                id=row["question_id"],
+                title=title,
+                abstract=abstract,
+                text=body,
+                label=row["outcome"],
+                text_sha256=digest(body),
+            )
+        )
     components = {}
     for i, paper in enumerate(items):
         components.setdefault(root(i), []).append(paper)
     # Conflicting historical outcomes cannot define a unique group target.
-    stable = [min(group, key=lambda x: x["id"]) for group in components.values() if len({x["label"] for x in group}) == 1]
-    return stable, dict(parsed=len(items), excluded_parse_or_label=missing, groups=len(components), retained_groups=len(stable))
+    stable = [
+        min(group, key=lambda x: x["id"])
+        for group in components.values()
+        if len({x["label"] for x in group}) == 1
+    ]
+    return stable, dict(
+        parsed=len(items),
+        excluded_parse_or_label=missing,
+        groups=len(components),
+        retained_groups=len(stable),
+    )
 
 
 def prepare(project: Path) -> dict:
@@ -127,17 +191,37 @@ def prepare(project: Path) -> dict:
     if digest(raw) != DATA_HASH:
         raise ValueError("Local CSV checksum mismatch")
     csv.field_size_limit(16 * 1024 * 1024)
-    papers, audit = unique_papers(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline="")))
-    by_label = {label: sorted((p for p in papers if p["label"] == label), key=lambda p: digest("rqgm-split-v1/42/" + p["id"])) for label in ("accept", "reject")}
+    papers, audit = unique_papers(
+        csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""))
+    )
+    by_label = {
+        label: sorted(
+            (p for p in papers if p["label"] == label),
+            key=lambda p: digest("rqgm-split-v1/42/" + p["id"]),
+        )
+        for label in ("accept", "reject")
+    }
     manifest = dict(source=DATA_URL, source_sha256=DATA_HASH, audit=audit, splits={})
     offset = 0
     for name, count in SIZES.items():
-        subset = sorted([p for pool in by_label.values() for p in pool[offset:offset+count//2]], key=lambda p: digest("order/" + p["id"]))
-        if Counter(p["label"] for p in subset) != {"accept":count//2, "reject":count//2}:
+        subset = sorted(
+            [
+                p
+                for pool in by_label.values()
+                for p in pool[offset : offset + count // 2]
+            ],
+            key=lambda p: digest("order/" + p["id"]),
+        )
+        if Counter(p["label"] for p in subset) != {
+            "accept": count // 2,
+            "reject": count // 2,
+        }:
             raise ValueError(f"Insufficient eligible data for {name}")
         dump(private / f"{name}.json", subset)
         ident = [(p["id"], p["text_sha256"], p["label"]) for p in subset]
-        manifest["splits"][name] = dict(count=count, sha256=digest(canonical(ident)), ids=[p["id"] for p in subset])
+        manifest["splits"][name] = dict(
+            count=count, sha256=digest(canonical(ident)), ids=[p["id"] for p in subset]
+        )
         offset += count // 2
     dump(project / "results" / "split-manifest.json", manifest)
     return manifest
