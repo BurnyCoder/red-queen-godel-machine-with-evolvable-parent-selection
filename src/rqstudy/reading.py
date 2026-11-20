@@ -1,4 +1,5 @@
 """Token-aware full manuscript access with fixed, cached reading of every chunk."""
+
 from __future__ import annotations
 
 import functools
@@ -15,9 +16,9 @@ READ = "Extract specific research questions, methods, evidence, flaws and limita
 
 @functools.lru_cache(maxsize=3)
 def tokenizer(project: Path):
-    path = project/".private"/"data"/"tokenizer.json"
+    path = project / ".private" / "data" / "tokenizer.json"
     if not path.exists():
-        path.parent.mkdir(parents=True,exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with urllib.request.urlopen(TOKENIZER_URL, timeout=90) as stream:
             raw = stream.read()
         if digest(raw) != TOKENIZER_HASH:
@@ -33,8 +34,14 @@ def chunks(text: str, size: int, codec) -> list[str]:
     encoded = codec.encode(text, add_special_tokens=False)
     if len(encoded.ids) <= size:
         return [text]
-    cuts = sorted({0,len(text),*(encoded.offsets[i][0] for i in range(size,len(encoded.ids),size))})
-    return [text[a:b] for a,b in zip(cuts,cuts[1:]) if b>a]
+    cuts = sorted(
+        {
+            0,
+            len(text),
+            *(encoded.offsets[i][0] for i in range(size, len(encoded.ids), size)),
+        }
+    )
+    return [text[a:b] for a, b in zip(cuts, cuts[1:]) if b > a]
 
 
 def read_paper(broker, event: str, text: str):
@@ -42,17 +49,25 @@ def read_paper(broker, event: str, text: str):
     codec = tokenizer(broker.project)
     # Reserve room for evolved instructions, the review schema and output tokens.
     limit = max(512, broker.ctx - 4096) if broker.ctx > 4096 else 2048
-    sections = chunks(text,limit,codec)
-    metadata = dict(route="direct" if len(sections)==1 else "section",chunks=len(sections),
-                    chars=len(text),covered=sum(map(len,sections)),sha256=digest(text))
-    if len(sections)==1:
-        return text,metadata
+    sections = chunks(text, limit, codec)
+    metadata = dict(
+        route="direct" if len(sections) == 1 else "section",
+        chunks=len(sections),
+        chars=len(text),
+        covered=sum(map(len, sections)),
+        sha256=digest(text),
+    )
+    if len(sections) == 1:
+        return text, metadata
     layer = 0
-    while len(sections)>1:
-        notes = [broker.ask(f"{event}/read/{layer}/{i}","reader",READ,part,192) for i,part in enumerate(sections)]
+    while len(sections) > 1:
+        notes = [
+            broker.ask(f"{event}/read/{layer}/{i}", "reader", READ, part, 192)
+            for i, part in enumerate(sections)
+        ]
         merged = "\n\n".join(notes)
         if not merged.strip():
             raise ValueError("Empty reading notes")
-        sections = chunks(merged,limit,codec)
+        sections = chunks(merged, limit, codec)
         layer += 1
-    return sections[0],metadata
+    return sections[0], metadata
