@@ -51,6 +51,20 @@ def load(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def read_split(project: Path, split: str):
+    """Verify manuscript contents, extracted writer inputs, labels and registered order."""
+    papers = load(project/".private"/"data"/(split+".json"))
+    manifest = load(project/"results"/"split-manifest.json")["splits"][split]
+    identity = [(p["id"], digest(p["text"]), p["label"]) for p in papers]
+    if digest(canonical(identity)) != manifest["sha256"]:
+        raise ValueError(f"{split} split fingerprint mismatch")
+    for paper in papers:
+        parsed = re.search(r"\ATitle:\s*(.+?)\s*\n+\s*Abstract:\s*(.+?)(?=\n+\s*Section:|\Z)", paper["text"], re.S | re.I)
+        if not parsed or tuple(s.strip() for s in parsed.groups()) != (paper["title"], paper["abstract"]):
+            raise ValueError("Writer inputs differ from the fingerprinted manuscript")
+    return papers
+
+
 def clean(raw: str) -> str:
     """Decode the released Python string representation before removing outcome cues."""
     if raw.startswith(("'", '"')):

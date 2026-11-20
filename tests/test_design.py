@@ -13,7 +13,7 @@ from rqstudy.workspace import ROOT, apply_changes
 
 
 def tree():
-    archive = Archive(WorkspaceNode("root", deepcopy(ROOT), None))
+    archive = Archive(WorkspaceNode("root", deepcopy(ROOT), None, 0))
     archive.add_node(WorkspaceNode("older", deepcopy(ROOT), "root", 1))
     archive.add_node(WorkspaceNode("latest", deepcopy(ROOT), "older", 2))
     for node, outcomes in (("root", [0]*16), ("older", [0]*4), ("latest", [1]*20)):

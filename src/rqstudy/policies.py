@@ -78,7 +78,7 @@ def choose_parent(arm: str, archive, view: dict, rng, worker) -> dict:
                 result = worker.call(source,"select_parent",view,seed)
                 if result not in ids:
                     raise ValueError("Selected an ineligible node")
-                event.update(owner=owner,parent=result,source_hash=digest(source))
+                event.update(owner=owner,parent=result,source=source,source_hash=digest(source))
                 break
             except ValueError as exc:
                 event["failures"].append(dict(owner=owner,error=str(exc),source_hash=digest(source)))

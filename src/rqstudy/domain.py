@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from .data import canonical, digest, load
+from .data import canonical, digest, read_split
 from .reading import read_paper
 from .workspace import ROOT, apply_changes
 
@@ -16,8 +16,7 @@ class Domain:
 
     def __init__(self, project, broker, worker):
         self.project, self.broker, self.worker = project,broker,worker
-        data = project/".private"/"data"
-        self.train, self.validation = load(data/"train.json"),load(data/"validation.json")
+        self.train, self.validation = read_split(project,"train"), read_split(project,"validation")
         self.anchor = [p for label in ("accept","reject") for p in [x for x in self.validation if x["label"]==label][:4]]
         self.anchor_provider = SimpleNamespace(provider_id="APReS-validation", version="1",
                                                fingerprint=digest(canonical([(p["id"],p["text_sha256"]) for p in self.anchor])))

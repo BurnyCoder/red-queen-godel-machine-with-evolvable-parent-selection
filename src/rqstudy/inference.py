@@ -63,7 +63,15 @@ class Broker:
                        options=dict(num_ctx=self.ctx,num_predict=cap,seed=seed,temperature=temperature))
         if schema:
             payload["format"] = schema
-        key = digest(canonical([MODEL_DIGEST,self.version,payload]))
+        if role=="reader":
+            compartment="fixed-reader"
+        elif event.startswith("search/"):
+            compartment="training" if event.startswith("search/train/") else "search"
+        elif event.startswith("endpoint/"):
+            compartment="test" if self.run.startswith("eval-test-") else "pilot"
+        else:
+            compartment=self.run
+        key = digest(canonical([compartment,MODEL_DIGEST,self.version,payload]))
         old = self.db.execute("SELECT key FROM calls WHERE run=? AND event=?",(self.run,event)).fetchone()
         if old and old[0] != key:
             raise RuntimeError(f"Resume produced a different request for {event}")
