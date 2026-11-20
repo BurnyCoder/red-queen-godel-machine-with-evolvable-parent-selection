@@ -1,5 +1,34 @@
 [project]
 name = "rqgm-parent-study"
 version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = []
+description = "Preregistered executable parent selection in a local RQGM paper-review search"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "openrqgm",
+    "numpy",
+    "scipy",
+    "httpx",
+    "tokenizers",
+    "python-dotenv",
+    "reportlab",
+    "matplotlib",
+]
+
+[tool.uv.sources]
+openrqgm = { git = "https://github.com/DreamFallenFlowers/OpenRQGM", rev = "feecb32d9fbdd1c60749ade9ecb47f971e12666e" }
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "pypdf"]
+
+[project.scripts]
+rqgm-study = "rqstudy.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rqstudy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
